@@ -1,0 +1,458 @@
+\documentclass[a4paper,10pt]{article}
+\usepackage[a4paper,vmargin={25mm,30mm},hmargin={25mm,25mm}]{geometry}
+
+\usepackage{url}
+\usepackage{epsfig}
+
+\usepackage{listings}
+\lstset{ %
+language=C,                % choose the language of the code
+basicstyle=\ttfamily\fontsize{11}{12}\selectfont,
+%numbers=left,                   % where to put the line-numbers
+numberstyle=\footnotesize,      % the size of the fonts that are used for the line-numbers
+numbersep=5pt,                  % how far the line-numbers are from the code
+backgroundcolor=\color{white},  % choose the background color. You must add \usepackage{color}
+commentstyle=\color{gray},
+showspaces=false,               % show spaces adding particular underscores
+showstringspaces=false,         % underline spaces within strings
+showtabs=false,                 % show tabs within strings adding particular underscores
+%frame=single,           % adds a frame around the code
+tabsize=2,          % sets default tabsize to 2 spaces
+captionpos=b,           % sets the caption-position to bottom
+breaklines=true,        % sets automatic line breaking
+breakatwhitespace=false,    % sets if automatic breaks should only happen at whitespace
+escapeinside={\%*}{*)}          % if you want to add a comment within your code
+}
+\usepackage{xcolor}
+\usepackage{textcomp}
+
+\setlength{\parskip}{\baselineskip}
+
+%\usepackage{pgfplots}
+%\usepackage{tikz} %For dia files; sudo apt-get install pgf
+%\usepgfplotslibrary{external} %to compile pgfplots seperately
+%\usetikzlibrary{external} %to compile tikz plots separately
+%\tikzexternalize[prefix=figs/] %to compile pgfplots separately
+%\usetikzlibrary{arrows,calc}
+%\usepackage{standalone} %to compile tikz plots separately
+
+
+\title{Lab 1: Dynamic Memory: Heap Manager}
+%\input{author}
+
+\newcommand{\comment}[1]{}
+
+\date{}
+\begin{document}
+\maketitle
+
+\section{Introduction}
+For this lab you implement a basic heap manager.  
+The standard C runtime library provides a standard heap manager
+through the {\texttt malloc} and {\texttt free} library calls.  For this lab
+you implement your own version of this interface.
+
+First you should understand the interface, purpose, and function of
+a heap manager.   On any properly installed Unix system you should be
+able to type {\it man malloc} to a shell or terminal window, which
+will output documentation for the interface.  (If you
+are using your own computer, follow the instructions to install a
+Unix/C development environment first.)  You can also type  {\it man malloc}
+into Google.   You can also learn about heap managers from the
+readings on the course web.
+
+You are asked to provide your own implementation of these heap API
+operators called \texttt{dmalloc} and \texttt{dfree}. 
+%\footnote{The lab names are commonly prefixed with \texttt{d}, which---as you might have guessed---can be 
+%read as \texttt{duke/devil}, or \texttt{dynamic} in this context.}. 
+From the
+perspective of the {\it user program} (the program using your heap manager in any given process), the behavior should
+be equivalent to the standard \texttt{malloc} and \texttt{free}.  We
+have supplied some code to get you started, including a header file called \texttt{dmm.h}
+Please use that header file and that API
+in your solution, and do not change it.
+
+%  If you change the header file, your solution
+%cannot be evaluated correctly using autograder tools. Learning to rely on abstractions or
+%APIs provided by a 3rd party is a necessary skill for implementing any systems project.
+
+The lab is designed to build your understanding of how data is laid out in
+memory, and how operating systems manage memory.
+Your heap manager should be designed to use memory efficiently: you should understand the issues related to memory fragmentation, some
+techniques for minimizing fragmentation and achieving good memory utilization.
+
+As a side benefit, the lab will expose you to system programming in the C
+programming language, and manipulating data structures ``underneath''
+the type system.   Many students find this to
+be quite difficult.   We strongly encourage you to start early and
+familiarize yourself with the C and its pitfalls and with the C/Unix development environment, e.g., by playing
+around with the C examples on the course web.  You will need to know some
+basic Unix command line tools: {\it man, cd, ls, cat, more/less, pwd,
+  cp, mv, rm, diff} and an editor of some kind.  Also, debugging will
+go much more easily if you use {\it gdb}, at least a little.  See
+resources on the course web.
+
+
+
+
+\comment{We strongly encourage you to start early and invest time in understanding the concepts. The number of lines
+of code you write for this lab need not be more than few dozens; however, you might be drawing
+lots of diagrams to understand the concepts behind pointers and managing
+linked lists, and analyzing the tradeoffs between the implementation choices.}
+
+To submit your solution, follow the instructions on the lab webpage.
+
+\section{Dynamic Memory Allocation}
+
+At any given time, the heap consists of some sequence of {\it blocks}.   Each
+heap block is a contiguous sequence of bytes.  Every byte in the
+heap is part of exactly one heap block.  Each block is either
+allocated or free.
+
+The heap blocks are variably sized.  The borders between the blocks shift as blocks
+are allocated (with \texttt{dmalloc}) and freed (with
+\texttt{dfree}).  In particular, the heap manager splits and coalesces
+heap blocks to satisfy the mix of heap requests efficiently.   In
+doing this, the heap manager must be careful to track the borders and
+the status of each block.  The following subsections discuss the implementation in more detail.
+
+\subsection{Block metadata: headers}
+
+The heap manager places a {\it header} at the start of each block of
+the heap space.  A block's header represents some {\it metadata}
+information about the block, including the block's size.    In general
+``metadata'' is data about data: the header describes the block, but
+it is not user data.  The rest of the block is available for use by the user program.
+%(the running program that is using the heap manager in this process). 
+The user program
+does not ``see'' the metadata headers, which are only for the internal use of the heap manager.
+
+The code we provided defines \texttt{metadata\_t} as a data structure template (a \texttt{struct}
+type) for the block headers.  The
+intent is that each heap block will have a \texttt{metadata\_t}
+structure at the top of it, whether the block is allocated or free.
+The \texttt{metadata\_t} structure is defined in
+\texttt{dmm.c} as:
+
+\begin{lstlisting}
+typedef struct metadata {
+      /* size contains the size of the data object or the amount 
+       * of free bytes 
+       */
+        size_t size;
+        struct metadata* next;
+        struct metadata* prev; 
+} metadata_t;
+\end{lstlisting}
+
+The block header is useful for two reasons. First, a block's header represents whether
+the block is allocated or free.  A heap manager must track that
+information so that it
+does not allocate the same region or overlapping regions of memory for
+two different \texttt{dmalloc()} calls by accident. 
+
+Second, the block headers help to track and locate the borders between
+heap blocks.   This makes it possible to coalesce free heap blocks to
+form larger blocks, which may be needed for later large \texttt{dmalloc}
+requests.  The supplied
+\texttt{metadata} structure makes it easy to link the headers of the free blocks
+into a list (the {\it free list}).   
+
+There are many ways to implement a heap manager.  The most efficient
+schemes also place a {\it footer} at the end of each block.   You may
+use footers if you wish, but they are not required.   
+
+\subsection{Initialization: The sbrk system call}
+
+When a heap manager initializes it obtains a large slab of virtual
+memory to ``carve up'' into heap blocks to store the individual items
+or objects.
+It does this by requesting virtual memory from the
+operating system kernel using a system call, e.g., \texttt{mmap} or
+\texttt{sbrk}.   This is described in the various text resources on the
+course web.   The supplied
+code uses \texttt{sbrk} to extend the data segment of the virtual
+address space.  The \texttt{sbrk} system call causes a region of the virtual memory
+that was previously unused (and invalid) to be registered for use: the
+kernel sets up page tables for the region and arranges that each page
+of the region is zero-filled as it is referenced.  Then  \texttt{sbrk}
+returns a pointer to the new region (the ``slab'').
+
+Initially the heap consists of a single
+free heap block that contains the entire slab.  The supplied code casts
+the slab address to a pointer to a \texttt{metadata\_t} struct and
+places it in a global pointer variable
+called \texttt{heap\_region}:
+
+\begin{lstlisting}
+metadata_t* heap_region = (metadata_t*) sbrk(MAX_HEAP_SIZE);
+\end{lstlisting} 
+
+Thus the \texttt{heap\_region} pointer references the header for
+the first (and only) block in the heap, which is a free block.
+
+A ``real'' heap manager may obtain additional slabs as needed.  For
+this lab we limit the number of \texttt{sbrk} calls to
+\texttt{HEAP\_SYSCALL\_LIMIT} for evaluation purposes.  The default
+value is 1.
+
+\subsection{Heap Manager API: dmalloc and dfree}
+
+All of the heap blocks you allocate with
+\texttt{dmalloc()} should come from the one initial slab.
+Whenever {\texttt dmalloc} allocates
+a block, it returns a pointer to the block for use by the application
+program.  The returned pointer should ``skip past'' the block's header, so
+that the program does not overwrite the header.  The returned pointer
+should be 
+aligned on a longword boundary.  Be sure that you understand what this means and why it is
+important.
+
+
+\begin{figure}[!ht]
+\centering
+\epsfig{file=fig1.eps,width=3.5in}\hspace{2mm}\hspace{1mm}
+\caption{The initial state of the heap: a single block at the head of the \texttt{freelist}.  }
+\label{fig:freelist}
+\end{figure}
+
+The supplied code includes some macros to assist you in {\texttt dmm.h}.
+It also makes it easy to keep track of the
+available space using  a doubly linked list of headers of
+the free heap blocks, called a \texttt{freelist}.
+At the start of the program, the \texttt{freelist} is initialized to
+contain a single large block, consisting of the entire slab pointed to
+by \texttt{heap\_region}.
+%, we use the term \texttt{freelist header} to denote the head of the \texttt{freelist},
+%which is useful to iterate through the list. 
+Figure~\ref{fig:freelist} shows the initial state of the heap, with the head of the freelist.
+%along with the metadata.
+
+
+\comment{
+See Bryant and O'Hallaron~\cite{Bryant}, Chapter 9 for more
+efficient structure. You are encouraged to improve the metadata structure for 
+better efficiency. In addition, you can earn extra credit for implementing all the 
+operations in constant time, i.e., O(1).
+}
+
+\comment{
+Figure~\ref{fig:freelist} shows an allocated block along with its metadata
+information (the blue region). The payload denotes the space allocated to the user.
+
+There are two possible choices during  initialization. You can append
+prologue and epilogue blocks to the start and the end of the
+\texttt{freelist}, or initialize the \texttt{freelist} pointers to
+\texttt{NULL}. 
+
+We provide the code for the latter; however using the former
+may help you to tackle the corner cases more succinctly.
+
+\begin{lstlisting}
+        size_t max_bytes = ALIGN(MAX_HEAP_SIZE);
+        freelist = (metadata_t*) sbrk(max_bytes);
+        /* Why casting is needed here? i.e., why (void*)-1? */
+        if (freelist == (void *)-1)
+                return false;
+        freelist->next = NULL;
+        freelist->prev = NULL;
+        freelist->size = max_bytes-METADATA_T_ALIGNED;
+\end{lstlisting}
+}
+
+\section{Splitting a free heap block}
+
+It is often useful to split a free heap block on a call to 
+\texttt{dmalloc}.   The split produces two contiguous free heap blocks of any
+desired size, within the address range of the original block before the split.
+You must implement a split operation: without an ability to split, the heap
+could never contain more than one block!
+
+For a split, we first need to check whether the requested size is
+less than space available in the target block.  If so, the most memory-efficient approach is
+to allocate a block of the requested size by splitting
+it off of the target block, leaving the rest of the target block free.
+The first block is returned to the caller and the second
+block remains in the freelist.
+The
+\texttt{metadata} header in both the blocks is updated accordingly to reflect the
+sizes after splitting.
+Figure~\ref{fig:split} shows the \texttt{freelist} after a split.
+
+\begin{figure}[!ht]
+\centering
+\epsfig{file=fig2.eps,width=3.5in}\hspace{2mm}\hspace{1mm}
+\caption{Structure of the \texttt{freelist} after a split.}
+\label{fig:split}
+\end{figure}
+
+
+\section{Freeing space: coalescing}
+The program frees an allocated heap block by calling \texttt{dfree()}, passing a pointer
+to the block to free.   The heap manager reclaims the space, making it available for use by a
+future \texttt{dmalloc}.
+One solution is to just insert the block back into the
+\texttt{freelist}.
+
+As blocks are allocate and freed, over time you may end up with adjacent blocks
+that are both free.  In that case, it is often useful and/or necessary
+to 
+combine the adjacent blocks into a single contiguous heap block.
+This is called {\it
+  coalescing}.   
+Coalescing makes it possible to reuse freed space as part of a future block of a larger size.
+Without coalescing, a program that fills its heap with small blocks could never allocate a large block, even if it
+frees all of the heap memory.   We say that a heap is ``fragmented'' if its space is available only in small blocks.
+
+
+
+% For example, consider the case when an allocated block is
+%freed. The function \texttt{dfree()} must link that block into the
+%\texttt{freelist}. \comment{Now, where should the freed block be placed?} See Figure~\ref{fig:free}.
+
+\begin{figure}[!ht]
+\centering
+\epsfig{file=fig3.eps,width=3.5in}\hspace{2mm}\hspace{1mm}
+\caption{\texttt{freelist} after the first block is freed. }
+\label{fig:free}
+\end{figure}
+
+
+
+You have a couple of options to perform coalescing: First, you can coalesce as
+you exit the \texttt{dfree()} call. Second, you can periodically or
+explicitly invoke the coalesce function when you are no longer able to
+find a sufficiently large block to satisfy a call to \texttt{dmalloc}.
+
+One optimization we can perform is to keep the \texttt{freelist} in sorted
+order w.r.t addresses so that you can do the coalescing in one pass of the
+list. For example, if your coalescing function were to start at the beginning of the
+\texttt{freelist} and iterate through the end, at any block, it could look up
+its adjacent blocks on the left and the right (``above'' and
+``below'').   If free blocks are
+contiguous/adjacent, the blocks can be coalesced. 
+
+If we keep the \texttt{freelist} in sorted order, coalescing two blocks is
+simple. You add the
+space of the second block and its metadata to the space in the first block. In
+addition, you need to unlink the second block from
+the \texttt{freelist} since it has been absorbed by the first block.
+See Figure~\ref{fig:coalesce}.
+
+\begin{figure}[!ht]
+\centering
+\epsfig{file=fig4.eps,width=3.5in}\hspace{2mm}\hspace{1mm}
+\caption{\texttt{freelist} after the first two blocks are coalesced.}
+\label{fig:coalesce}
+\end{figure}
+
+\comment{
+\section{Finding the right fit for the requested bytes}
+Finding the right fit is hard since it requires you to predict the pattern of
+\emph{future} requests. For example, suppose after $n$ requests all the blocks 
+are exactly four words in size. Does this heap suffer from fragmentation? The
+answer depends on future requests. Check the reference~\cite{Bryant} for more material
+on this topic.
+
+While, there is lot of research done in finding the right fit algorithms, 
+we recommend to start with the simplest choice: the first fit algorithm, which
+essentially traverses the \texttt{freelist} from the head until it finds the
+spot. Once you are done with first fit and you have a working code, it is
+easier to implement best fit or next fit algorithms.
+
+}
+
+\section{Getting started}
+
+Fetch the source code files from the course web into a directory, cd into that directory, 
+and type ``make''. Read the handout. Modify the code as directed in the handout. Type
+``make'' again. Test by running the test programs. (Just type the name of the program preceded by ./.) 
+Repeat. You can debug/execute all the test cases by running ``make
+debug'' and ``make test''. 
+
+We recommend that you first implement {\texttt dmalloc} with
+splitting.   Test it.  Then implement {\texttt dfree} by inserting
+freed blocks into a sorted freelist.   Test it, and be sure you can
+recycle heap blocks through the free list.  Then add support for coalescing to
+reduce fragmentation.  Then consider alternative ways to make your
+heap manager more efficient.
+
+\section{Roadblocks and hints}
+You are encouraged to post your questions or issues to piazza~\cite{piazza}. 
+The instructor or the TAs will post tips that may point you and others in the right direction. 
+
+One general advice is to write code in small steps and understand the
+functionality of provided header files, macros, and code completely before
+starting the implementation. Use \texttt{assert} and \texttt{debug}
+macros aggressively.
+If you crash, use {\it gdb} to figure out where.  It's not hard!  (See
+the resources page on the course web.)
+
+\section{What to submit}
+First, fetch the source code available at~\cite{lab1}. In \texttt{dmm.c},
+you implement two functions:
+\begin{enumerate}
+ \item \texttt{dmalloc()}
+ \item \texttt{dfree()}
+\end{enumerate}
+
+according to the API in \texttt{dmm.h}. Submit a single
+\texttt{dmm.c} file along with a \texttt{README} file documenting the
+implementation choices you made (more in section~\ref{sec:grading}), the results, the amount of time you spent on the lab, and
+also include your name along with the collaborators involved. Use the websubmit
+to submit your code by selecting the course
+as ``compsc310'' and then the lab label as ``lab1''.
+
+\comment{
+Submission 
+instructions will be announced on the course page before the deadline.
+
+
+You can submit
+the code using the \texttt{submit210} from any of the CS departmental
+machines.
+}
+
+You may implement the code any way you like. In particular, you may either
+coalesce when you run out of space or when \texttt{dfree()} is
+terminating. It must behave in the same way as \texttt{malloc()} does.
+
+As mentioned earlier, we will use the provided version of
+\texttt{dmm.h} so it is important that you do not change this header
+file in any way. 
+
+In addition, we have provided supplementary files to get you started:
+\texttt{Makefile} contains cases for \texttt{compile}, \texttt{debug}, and
+\texttt{test}.  \texttt{test\_basic, test\_coalesce, test\_stress1,
+test\_stress2} contain test cases scenarios which can be helpful while
+debugging. The stress test cases generate variable sized objects and will
+randomly call \texttt{dmalloc} and \texttt{dfree} functions. Note: Passing 
+\texttt{test\_basic, test\_coalesce} does not mean your code is functional. 
+You should aim to pass \texttt{test\_stress2} with high success rate. 
+You may want to know that the final test cases need not the same
+cases which were provided to you.
+
+\section{Grading}
+\label{sec:grading}
+The grading is done on the scale of 100 and you have an opportunity to earn 25 extra points.
+\begin{itemize}
+ \item Correctness: 50 points
+ \item Efficiency:  25 points (improve the efficiency using first-fit/best-fit algorithms using the \texttt{metadata} structure provided in the \texttt{dmm.c} file; 
+			      efficiency is measured as a combination of utilization and throughput as provided in~\cite{Bryant}; with the provided metadata structure
+			      you should at least see a success rate above 80\%)
+ \item Readability: 10 points (comment your code where necessary)
+ \item README:	    15 points (Your README should contain evaluation of the choices you made in the design of your heap manager.
+			      For example, it should contain about the list of information you store in the \texttt{metadata} structure,
+			      how the \texttt{coalesce}, \texttt{free}, and \texttt{split} operations benefited from the \texttt{metadata} structure,
+			      the space and time overheads and tradeoffs, the results of your test cases, the amount of time you spend on the lab,
+			      your name and any collaborators involved, references to any additional resources used, and your feedback on the lab).
+			     
+ \item Extra credit: 25 points (With address order sorting, the efficiency of all operations is O(\#free blocks). Improve the efficiency of 
+			      \texttt{free} and \texttt{coalescing} operations to a constant time, i.e., O(1). Useful reference~\cite{Bryant})
+
+\end{itemize}
+
+\bibliographystyle{plain}
+\bibliography{cps210}
+
+\end{document}
