@@ -27,21 +27,95 @@ typedef struct metadata {
 static metadata_t* freelist = NULL;
 
 void* dmalloc(size_t numbytes) {
+	
 	if(freelist == NULL) { 			//Initialize through sbrk call first time
 		if(!dmalloc_init())
 			return NULL;
 	}
+	//test_print();
 
 	assert(numbytes > 0);
 
 	/* Your code goes here */
-	
-	return NULL;
+
+	// case of 0, return null pointer
+	if(numbytes == 0){
+		return NULL;
+	}
+
+	metadata_t * currfree = freelist;
+	while(numbytes > currfree->size){
+		if(currfree==NULL){
+			print_freelist();
+			return NULL;
+		}
+		currfree = currfree->next;
+	}
+	//Corner case for allocation rather than splitting
+	if(numbytes > currfree->size - METADATA_T_ALIGNED){
+		//size_t old_freelist_size = freelist->size;
+		//MAKE POINTERS NULL
+		printf("Freelist: %p", currfree);
+		//new size is size of the block! we are not changing it.
+		void * returnptr = (void *) currfree;
+		returnptr = METADATA_T_ALIGNED + returnptr;
+		printf("Returnptr: %p", returnptr);
+		currfree = currfree->next;
+		printf("New block size: %lu", METADATA_T_ALIGNED + currfree->size);
+		print_freelist();
+		return returnptr;
+	}
+
+
+	printf("Freelist: %p", currfree);
+
+	//change size, make pointers of allocated block NULL
+	//MAKE POINTERS NULL
+	size_t old_freelist_size = currfree->size;
+	currfree->size = ALIGN(numbytes);
+	void * returnptr = (void *) currfree;
+	returnptr = METADATA_T_ALIGNED + returnptr;
+	printf("Returnptr: %p", returnptr);
+	void * newfreelist = (void *) currfree;
+	newfreelist = newfreelist + METADATA_T_ALIGNED + ALIGN(numbytes);
+	printf("newfreelist: %p", newfreelist);
+	currfree = (metadata_t *) newfreelist;
+	currfree->size = old_freelist_size - METADATA_T_ALIGNED - ALIGN(numbytes);
+	printf("freesize: %zd", currfree->size);
+	printf("New block size: %lu", METADATA_T_ALIGNED + ALIGN(numbytes));
+	print_freelist();
+	return returnptr;
+
+	//void * newblock = (metadata_t*)
+
+	//freelist = freelist + ALIGN(numbytes) + ;
 }
 
 void dfree(void* ptr) {
-
+	print_freelist();
 	/* Your free and coalescing code goes here */
+
+	ptr = ptr - METADATA_T_ALIGNED;
+
+	//NULL case
+	if(freelist == NULL){
+		freelist = (metadata_t*) ptr;
+		//size should already be there
+	}
+	else{
+	//Find the free block closest to the new block
+		metadata_t *currfree = freelist;
+		while(currfree->next!=NULL && (void*)currfree->next<ptr){
+			currfree = currfree->next;
+		}
+		metadata_t * newfreeblock = (metadata_t*) ptr;
+		newfreeblock->next = currfree->next;
+		currfree->next->prev = newfreeblock;
+		currfree->next = newfreeblock;
+		newfreeblock->prev = currfree;
+	}
+	print_freelist();
+
 }
 
 bool dmalloc_init() {

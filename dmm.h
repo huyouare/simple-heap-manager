@@ -35,7 +35,7 @@ typedef enum{false, true} bool;
 bool dmalloc_init();
 void *dmalloc(size_t numbytes);
 void dfree(void *allocptr);
-
+void test_print();
 
 void print_freelist(); /* optional for debugging */
 
