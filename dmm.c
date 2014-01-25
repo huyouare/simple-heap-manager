@@ -43,47 +43,72 @@ void* dmalloc(size_t numbytes) {
 		return NULL;
 	}
 
-	metadata_t * currfree = freelist;
-	while(numbytes > currfree->size){
-		if(currfree==NULL){
+	metadata_t * cur = freelist;
+	while(numbytes > cur->size){
+		if(cur==NULL){
 			print_freelist();
 			return NULL;
 		}
-		currfree = currfree->next;
+		cur = cur->next;
 	}
+
 	//Corner case for allocation rather than splitting
-	if(numbytes > currfree->size - METADATA_T_ALIGNED){
+	if(numbytes >= cur->size - METADATA_T_ALIGNED){
 		//size_t old_freelist_size = freelist->size;
 		//MAKE POINTERS NULL
-		printf("Freelist: %p", currfree);
+		printf("Freelist: %p ", cur);
 		//new size is size of the block! we are not changing it.
-		void * returnptr = (void *) currfree;
+		void * returnptr = (void *) cur;
 		returnptr = METADATA_T_ALIGNED + returnptr;
-		printf("Returnptr: %p", returnptr);
-		currfree = currfree->next;
-		printf("New block size: %lu", METADATA_T_ALIGNED + currfree->size);
+		printf("Returnptr: %p ", returnptr);
+		if(cur->prev==NULL){ //Case when cur is head of list
+			freelist = cur->next;
+		}
+		cur->prev = NULL;
+		cur->next = NULL;
 		print_freelist();
+
 		return returnptr;
 	}
 
 
-	printf("Freelist: %p", currfree);
+	printf("Freelist: %p ", cur);
 
 	//change size, make pointers of allocated block NULL
 	//MAKE POINTERS NULL
-	size_t old_freelist_size = currfree->size;
-	currfree->size = ALIGN(numbytes);
-	void * returnptr = (void *) currfree;
+	size_t old_size = cur->size;
+	cur->size = ALIGN(numbytes);
+
+	void * returnptr = (void *) cur;
 	returnptr = METADATA_T_ALIGNED + returnptr;
-	printf("Returnptr: %p", returnptr);
-	void * newfreelist = (void *) currfree;
+	
+	void * newfreelist = (void *) cur;
 	newfreelist = newfreelist + METADATA_T_ALIGNED + ALIGN(numbytes);
-	printf("newfreelist: %p", newfreelist);
-	currfree = (metadata_t *) newfreelist;
-	currfree->size = old_freelist_size - METADATA_T_ALIGNED - ALIGN(numbytes);
-	printf("freesize: %zd", currfree->size);
-	printf("New block size: %lu", METADATA_T_ALIGNED + ALIGN(numbytes));
+	
+	metadata_t * newblock = (metadata_t *) newfreelist;
+	newblock->size = old_size - METADATA_T_ALIGNED - ALIGN(numbytes);
+	if(cur->prev == NULL){ //case when head of list
+		freelist = newblock;
+	}
+	if(cur->prev != NULL){
+		cur->prev->next = newblock;
+	}
+	if(cur->next != NULL){
+		cur->next->prev = newblock;
+	}
+	cur->next = NULL;
+	cur->prev = NULL;
+
+
+	printf("Returnptr: %p ", returnptr);
+	printf("newfreelist: %p ", newfreelist);
+	printf("cur->size: %zd ", cur->size);
+	printf("New block size: %lu \n", METADATA_T_ALIGNED + ALIGN(numbytes));
+
+
 	print_freelist();
+
+	//change freelist if first block used
 	return returnptr;
 
 	//void * newblock = (metadata_t*)
@@ -95,7 +120,8 @@ void dfree(void* ptr) {
 	print_freelist();
 	/* Your free and coalescing code goes here */
 
-	ptr = ptr - METADATA_T_ALIGNED;
+	ptr = ptr - METADATA_T_ALIGNED; // GO TO header
+	// YOU ARE ALREADY AT THE HEADER
 
 	//NULL case
 	if(freelist == NULL){
@@ -103,18 +129,44 @@ void dfree(void* ptr) {
 		//size should already be there
 	}
 	else{
-	//Find the free block closest to the new block
-		metadata_t *currfree = freelist;
-		while(currfree->next!=NULL && (void*)currfree->next<ptr){
-			currfree = currfree->next;
+		metadata_t * cur = freelist;
+		void * curvoid = (void *) cur;
+
+		//Freed block is before freelist
+		if(ptr < curvoid){
+			metadata_t * newfreeblock = (metadata_t *) ptr;
+			newfreeblock->prev = NULL;
+			newfreeblock->next = freelist;
+			freelist = newfreeblock;
+			return;
 		}
-		metadata_t * newfreeblock = (metadata_t*) ptr;
-		newfreeblock->next = currfree->next;
-		currfree->next->prev = newfreeblock;
-		currfree->next = newfreeblock;
-		newfreeblock->prev = currfree;
+
+		//Find the free block closest to the new block
+		
+		void * curnext = (void *) cur->next;
+		while(cur->next!=NULL && curnext<ptr){
+			cur = cur->next;
+			curnext = (void *) cur->next;
+		}
+		printf("Block previous to ptr: %p ", cur);
+		metadata_t * newfreeblock = (metadata_t *) ptr;
+		newfreeblock->next = cur->next;
+		cur->next->prev = newfreeblock;
+		cur->next = newfreeblock;
+		newfreeblock->prev = cur;
+		// Coalesce
+		void * prev = (void *) cur->prev;
+		void * next = (void *) cur->next;
+		
+		if(prev + METADATA_T_ALIGNED + cur->prev->size == curvoid){
+			cur->prev->size = cur->prev->size + cur->size + METADATA_T_ALIGNED;
+			cur->prev->next = cur->next;
+			cur->next->prev = cur->prev;
+			// Do we need to change the cur metadata?
+		}
 	}
 	print_freelist();
+
 
 }
 
