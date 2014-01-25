@@ -117,7 +117,6 @@ void* dmalloc(size_t numbytes) {
 }
 
 void dfree(void* ptr) {
-	print_freelist();
 	/* Your free and coalescing code goes here */
 
 	ptr = ptr - METADATA_T_ALIGNED; // GO TO header
@@ -127,6 +126,8 @@ void dfree(void* ptr) {
 	if(freelist == NULL){
 		freelist = (metadata_t*) ptr;
 		//size should already be there
+		print_freelist();
+		return;
 	}
 	else{
 		metadata_t * cur = freelist;
@@ -135,33 +136,49 @@ void dfree(void* ptr) {
 		//Freed block is before freelist
 		if(ptr < curvoid){
 			metadata_t * newfreeblock = (metadata_t *) ptr;
+			freelist->prev = newfreeblock;
 			newfreeblock->prev = NULL;
 			newfreeblock->next = freelist;
 			freelist = newfreeblock;
+			print_freelist();
 			return;
 		}
 
 		//Find the free block closest to the new block
 		
+
 		void * curnext = (void *) cur->next;
 		while(cur->next!=NULL && curnext<ptr){
 			cur = cur->next;
 			curnext = (void *) cur->next;
 		}
-		printf("Block previous to ptr: %p ", cur);
+		printf("Block previous to ptr: %p \n", cur);
 		metadata_t * newfreeblock = (metadata_t *) ptr;
 		newfreeblock->next = cur->next;
 		cur->next->prev = newfreeblock;
 		cur->next = newfreeblock;
 		newfreeblock->prev = cur;
-		// Coalesce
-		void * prev = (void *) cur->prev;
-		void * next = (void *) cur->next;
-		
-		if(prev + METADATA_T_ALIGNED + cur->prev->size == curvoid){
-			cur->prev->size = cur->prev->size + cur->size + METADATA_T_ALIGNED;
-			cur->prev->next = cur->next;
-			cur->next->prev = cur->prev;
+
+		void * prev = (void *) cur;
+		void * next = (void *) newfreeblock->next;
+		void * newfreeblockvoid = (void *) newfreeblock;
+		// Coalesce to next block
+		printf("Next: %p, %p \n", newfreeblockvoid + METADATA_T_ALIGNED + newfreeblock->size, next);
+		if(newfreeblockvoid + METADATA_T_ALIGNED + newfreeblock->size == next){
+			newfreeblock->size = newfreeblock->size + newfreeblock->next->size + METADATA_T_ALIGNED;
+			newfreeblock->next = newfreeblock->next->next;
+			if(newfreeblock->next != NULL){
+				newfreeblock->next->prev = newfreeblock;
+			}
+			// Do we need to change the cur metadata?
+		}
+
+		// Coalesce, cur is the previous block
+		printf("Prev: %p, %p \n", prev + METADATA_T_ALIGNED + cur->size, newfreeblockvoid);
+		if(prev + METADATA_T_ALIGNED + cur->size == newfreeblockvoid){
+			cur->size = cur->size + newfreeblock->size + METADATA_T_ALIGNED;
+			cur->next = newfreeblock->next;
+			cur->prev = newfreeblock->prev;
 			// Do we need to change the cur metadata?
 		}
 	}
