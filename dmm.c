@@ -45,11 +45,11 @@ void* dmalloc(size_t numbytes) {
 
 	metadata_t * cur = freelist;
 	while(numbytes > cur->size){
+		cur = cur->next;
 		if(cur==NULL){
 			print_freelist();
 			return NULL;
 		}
-		cur = cur->next;
 	}
 
 	//Corner case for allocation rather than splitting
@@ -140,6 +140,22 @@ void dfree(void* ptr) {
 			newfreeblock->prev = NULL;
 			newfreeblock->next = freelist;
 			freelist = newfreeblock;
+
+			void * next = (void *) newfreeblock->next;
+			void * newfreeblockvoid = (void *) newfreeblock;
+			// Coalesce to next block
+			printf("Next: %p, %p \n", newfreeblockvoid + METADATA_T_ALIGNED + newfreeblock->size, next);
+			if(newfreeblockvoid + METADATA_T_ALIGNED + newfreeblock->size == next){
+				newfreeblock->size = newfreeblock->size + newfreeblock->next->size + METADATA_T_ALIGNED;
+				metadata_t * newfreenext = newfreeblock->next;
+				newfreeblock->next = newfreeblock->next->next;
+				if(newfreeblock->next != NULL){
+					newfreeblock->next->prev = newfreeblock;
+				}
+				newfreenext->next = NULL;
+				newfreenext->prev = NULL;
+				// Do we need to change the cur metadata?
+			}
 			print_freelist();
 			return;
 		}
@@ -166,10 +182,13 @@ void dfree(void* ptr) {
 		printf("Next: %p, %p \n", newfreeblockvoid + METADATA_T_ALIGNED + newfreeblock->size, next);
 		if(newfreeblockvoid + METADATA_T_ALIGNED + newfreeblock->size == next){
 			newfreeblock->size = newfreeblock->size + newfreeblock->next->size + METADATA_T_ALIGNED;
+			metadata_t * newfreenext = newfreeblock->next;
 			newfreeblock->next = newfreeblock->next->next;
 			if(newfreeblock->next != NULL){
 				newfreeblock->next->prev = newfreeblock;
 			}
+			newfreenext->next = NULL;
+			newfreenext->prev = NULL;
 			// Do we need to change the cur metadata?
 		}
 
@@ -178,7 +197,11 @@ void dfree(void* ptr) {
 		if(prev + METADATA_T_ALIGNED + cur->size == newfreeblockvoid){
 			cur->size = cur->size + newfreeblock->size + METADATA_T_ALIGNED;
 			cur->next = newfreeblock->next;
-			cur->prev = newfreeblock->prev;
+			if(newfreeblock->next != NULL){
+				newfreeblock->next->prev = cur;
+			}
+			newfreeblock->next = NULL;
+			newfreeblock->prev = NULL;
 			// Do we need to change the cur metadata?
 		}
 	}

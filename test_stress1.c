@@ -9,7 +9,6 @@ int main(int argc, char *argv[])
 	int size;
 	void *ptr[10];
 	int i;
-
 	/*
  	 * try mallocing four pieces, each 1/4 of total size
  	 */
@@ -44,7 +43,6 @@ int main(int argc, char *argv[])
 
 	print_freelist();
 	printf("\n");
-
 	/*
   	 * this one should fail due to rounding
   	 */
@@ -85,6 +83,7 @@ int main(int argc, char *argv[])
 	/*
  	 * re-malloc first pointer
   	 */
+ 	printf("re-malloc first pointer\n");
 	ptr[0] = dmalloc(size);
 	if(ptr[0] == NULL)
 	{
@@ -121,6 +120,7 @@ int main(int argc, char *argv[])
  	 * try mallocing a little less to make sure no split occurs
    	 * first block from previous print should not be split
   	 */
+  printf("slightly smaller \n");
 	ptr[0] = dmalloc(size-1);
 	if(ptr[0] == NULL)
 	{
@@ -131,6 +131,7 @@ int main(int argc, char *argv[])
 	/*
   	 * free it and make sure it comes back as the correct size
   	 */
+ 	printf("free it and make sure it comes back as the correct size\n");
 	dfree(ptr[0]);
 	
 	print_freelist();
@@ -139,6 +140,7 @@ int main(int argc, char *argv[])
 	/*
  	 * okay, now see if multiples work
   	 */
+ 	printf("Multiples: \n");
 	for(i=0; i < 6; i++)
 	{
 		ptr[i] = dmalloc(100);
@@ -147,6 +149,7 @@ int main(int argc, char *argv[])
 	/*
  	 * free first block, third block, fifth block
   	 */
+ 	 printf("free first block, third block, fifth block\n");
 	dfree(ptr[0]);
 	dfree(ptr[2]);
 	dfree(ptr[4]);
@@ -157,26 +160,27 @@ int main(int argc, char *argv[])
  	 * now, free second block -- first, second, third blocks
    	 * should coalesce
 	 */
+  printf("free second block -- first, second, third blocks should coalesce\n");
 	dfree(ptr[1]);
 	print_freelist();
 	printf("\n");
 
-	/*
-	 * free the sixth block and it shoudl merge with the last
-  	 * block leaving two
- 	 */
-	dfree(ptr[5]);
-	print_freelist();
-	printf("\n");
+	// /*
+	//  * free the sixth block and it shoudl merge with the last
+ //  	 * block leaving two
+ // 	 */
+	// dfree(ptr[5]);
+	// print_freelist();
+	// printf("\n");
 
-	/*
-  	 * now free fourth block and they should all be together
-  	 */
-	dfree(ptr[3]);
-	print_freelist();
-	printf("\n");
+	// /*
+ //  	 * now free fourth block and they should all be together
+ //  	 */
+	// dfree(ptr[3]);
+	// print_freelist();
+	// printf("\n");
 
-	printf("Stress testcases1 passed!\n");
+	// printf("Stress testcases1 passed!\n");
 
 	exit(0);
 }
