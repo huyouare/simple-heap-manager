@@ -44,6 +44,7 @@ int main(int argc, char *argv[]) {
 	if(PSEUDO_RANDOM_SEED)
 		SEED(time(NULL));
 
+	//printf("%d\n", MAX_HEAP_SIZE);
 	assert(MAX_HEAP_SIZE >= 1024*1024 && "MAX_HEAP_SIZE is too low; Recommended setting is at least 1MB for test_stress2");
 
 	for(i=0; i < BUFLEN; i++) {
@@ -59,8 +60,10 @@ int main(int argc, char *argv[]) {
 
 		if(randvar < ALLOC_CONST && ptr[itr] == NULL) {
 			size = (int)(RAND() * MAX_ALLOC_SIZE);
-			if(size > 0)
+			if(size > 0){
+				DEBUG("dmalloc(%d)\n", size);
 				ptr[itr] = dmalloc(size);
+			}
 			else
 				continue;
 			if(ptr[itr] == NULL) {

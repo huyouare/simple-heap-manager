@@ -30,6 +30,8 @@ test_stress1: test_stress1.c dmm.o
 	$(CC) $(CFLAGS) -o test_stress1 test_stress1.c dmm.o
 test_stress2: test_stress2.c dmm.o
 	$(CC) $(CFLAGS) -o test_stress2 test_stress2.c dmm.o
+test_stress3: test_stress3.c dmm.o
+	$(CC) $(CFLAGS) -o test_stress3 test_stress3.c dmm.o
 dmm.o: dmm.c
 	$(CC) $(CFLAGS) -c dmm.c 
 clean:

@@ -8,7 +8,7 @@
 #include "dmm.h"
 
 #ifdef HAVE_DRAND48
-	#define RAND() (drand48())
+	#define RAND() (drand48()) 
 	#define SEED(x) (srand48((x)))
 #else
 	#define RAND() ((double)random()/RAND_MAX)

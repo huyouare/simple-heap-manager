@@ -165,22 +165,24 @@ int main(int argc, char *argv[])
 	print_freelist();
 	printf("\n");
 
-	// /*
-	//  * free the sixth block and it shoudl merge with the last
- //  	 * block leaving two
- // 	 */
-	// dfree(ptr[5]);
-	// print_freelist();
-	// printf("\n");
+	/*
+	 * free the sixth block and it shoudl merge with the last
+  	 * block leaving two
+ 	 */
+  printf("free the sixth block and it shoudl merge with the last block leaving two\n");
+	dfree(ptr[5]);
+	print_freelist();
+	printf("\n");
 
-	// /*
- //  	 * now free fourth block and they should all be together
- //  	 */
-	// dfree(ptr[3]);
-	// print_freelist();
-	// printf("\n");
+	/*
+  	 * now free fourth block and they should all be together
+  	 */
+  printf("now free fourth block and they should all be together\n");
+	dfree(ptr[3]);
+	print_freelist();
+	printf("\n");
 
-	// printf("Stress testcases1 passed!\n");
+	printf("Stress testcases1 passed!\n");
 
 	exit(0);
 }
